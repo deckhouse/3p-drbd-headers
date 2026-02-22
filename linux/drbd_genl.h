@@ -148,6 +148,7 @@ GENL_struct(DRBD_NLA_RESOURCE_OPTS, 4, res_opts,
 	__s32_field_def(13,	0 /* OPTIONAL */,	quorum_min_redundancy, DRBD_QUORUM_DEF)
 	__u32_field_def(14,	0 /* OPTIONAL */,	on_susp_primary_outdated, DRBD_ON_SUSP_PRI_OUTD_DEF)
 	__flg_field_def(15,	0 /* OPTIONAL */,	drbd8_compat_mode, DRBD_DRBD8_COMPAT_MODE_DEF)
+	__flg_field_def(17,	0 /* OPTIONAL */,	quorum_dynamic_voters, DRBD_QUORUM_DYNAMIC_VOTERS_DEF)
 )
 
 GENL_struct(DRBD_NLA_NET_CONF, 5, net_conf,
