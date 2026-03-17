@@ -130,7 +130,7 @@ GENL_struct(DRBD_NLA_DISK_CONF, 3, disk_conf,
 	__flg_field_def(23,     0 /* OPTIONAL */,	al_updates, DRBD_AL_UPDATES_DEF)
 	__flg_field_def(24,     0 /* OPTIONAL */,       discard_zeroes_if_aligned, DRBD_DISCARD_ZEROES_IF_ALIGNED_DEF)
 	__flg_field_def(26,     0 /* OPTIONAL */,	disable_write_same, DRBD_DISABLE_WRITE_SAME_DEF)
-	__flg_field_def(28,	0 /* OPTIONAL */,	non_voting, DRBD_NON_VOTING_DEF)
+	__flg_field_def(36,	0 /* OPTIONAL */,	non_voting, DRBD_NON_VOTING_DEF)
 )
 
 GENL_struct(DRBD_NLA_RESOURCE_OPTS, 4, res_opts,
@@ -149,7 +149,7 @@ GENL_struct(DRBD_NLA_RESOURCE_OPTS, 4, res_opts,
 	__s32_field_def(13,	0 /* OPTIONAL */,	quorum_min_redundancy, DRBD_QUORUM_DEF)
 	__u32_field_def(14,	0 /* OPTIONAL */,	on_susp_primary_outdated, DRBD_ON_SUSP_PRI_OUTD_DEF)
 	__flg_field_def(15,	0 /* OPTIONAL */,	drbd8_compat_mode, DRBD_DRBD8_COMPAT_MODE_DEF)
-	__flg_field_def(17,	0 /* OPTIONAL */,	quorum_dynamic_voters, DRBD_QUORUM_DYNAMIC_VOTERS_DEF)
+	__flg_field_def(25,	0 /* OPTIONAL */,	quorum_dynamic_voters, DRBD_QUORUM_DYNAMIC_VOTERS_DEF)
 )
 
 GENL_struct(DRBD_NLA_NET_CONF, 5, net_conf,
