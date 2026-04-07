@@ -385,6 +385,10 @@ GENL_struct(DRBD_NLA_INVAL_PEER_PARAMS, 33, invalidate_peer_parms,
 	__flg_field_def(1, DRBD_GENLA_F_MANDATORY, p_reset_bitmap, DRBD_INVALIDATE_RESET_BITMAP_DEF)
 )
 
+GENL_struct(DRBD_NLA_TRACK_BITMAP_PARMS, 34, track_bitmap_parms,
+	__flg_field(1, DRBD_GENLA_F_MANDATORY, start)
+)
+
 /*
  * Notifications and commands (genlmsghdr->cmd)
  */
@@ -620,6 +624,13 @@ GENL_op(DRBD_ADM_CHG_PEER_DEVICE_OPTS, 43,
 GENL_op(DRBD_ADM_RENAME_RESOURCE,		49, GENL_doit(drbd_adm_rename_resource),
 	GENL_tla_expected(DRBD_NLA_CFG_CONTEXT, DRBD_F_REQUIRED)
 	GENL_tla_expected(DRBD_NLA_RENAME_RESOURCE_PARMS, DRBD_F_REQUIRED))
+
+GENL_op(DRBD_ADM_TRACK_BITMAP,		51, GENL_doit(drbd_adm_track_bitmap),
+	GENL_tla_expected(DRBD_NLA_CFG_CONTEXT, DRBD_F_REQUIRED)
+	GENL_tla_expected(DRBD_NLA_TRACK_BITMAP_PARMS, DRBD_F_REQUIRED))
+
+GENL_op(DRBD_ADM_FLUSH_BITMAP,		52, GENL_doit(drbd_adm_flush_bitmap),
+	GENL_tla_expected(DRBD_NLA_CFG_CONTEXT, DRBD_F_REQUIRED))
 
 GENL_notification(
 	DRBD_PATH_STATE, 48, events,
