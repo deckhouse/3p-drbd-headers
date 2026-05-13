@@ -183,6 +183,12 @@ enum drbd_ret_code {
 	ERR_LOCAL_AND_PEER_ADDR = 173,
 	ERR_ALREADY_EXISTS 	= 174,
 	ERR_APV_TOO_LOW         = 175,
+	/* admin_lock-related (DRBD_FF_ADMIN_LOCK) */
+	ERR_LOCK_HELD		= 176, /* command rejected because admin_lock is held */
+	ERR_NOT_LOCK_HOLDER	= 177, /* unlock rejected: holder/generation mismatch */
+	ERR_LOCK_BUSY		= 178, /* lock acquisition timed out waiting for resync drain */
+	ERR_LOCK_NOT_HELD	= 179, /* unlock requested but lock is not held */
+	ERR_LOCK_NOT_SUPPORTED	= 180, /* a peer does not advertise DRBD_FF_ADMIN_LOCK */
 
 	/* insert new ones above this line */
 	AFTER_LAST_ERR_CODE

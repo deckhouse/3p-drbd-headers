@@ -338,4 +338,30 @@
 #define DRBD_RDMA_CTRL_SNDBUF_SIZE_DEF 0
 #define DRBD_RDMA_CTRL_SNDBUF_SIZE_SCALE '1'
 
+/* Maximum time DRBD_ADM_LOCK waits under adm_mutex on the coordinator
+ * for all local peer connections to reach Established (i.e., for any
+ * background resync to complete) before giving up. Range: 1..3600 sec.
+ * Default 120s is enough for typical "tail of resync" windows; bigger
+ * volumes / slower networks should pass an explicit larger value. */
+#define DRBD_LOCK_WAIT_TIMEOUT_MIN	1U
+#define DRBD_LOCK_WAIT_TIMEOUT_MAX	3600U
+#define DRBD_LOCK_WAIT_TIMEOUT_DEF	120U
+#define DRBD_LOCK_WAIT_TIMEOUT_SCALE	'1'
+
+/* Sentinel for "do not check" in DRBD_NLA_LOCK_PARMS.lock_expected_holder_node_id.
+ * Mirrors DRBD_SYNC_FROM_NID_DEF; uses the same range as peer ids. */
+#define DRBD_LOCK_HOLDER_ANY		-1
+#define DRBD_LOCK_HOLDER_ANY_MIN	-1
+#define DRBD_LOCK_HOLDER_ANY_MAX	DRBD_PEERS_MAX
+#define DRBD_LOCK_HOLDER_ANY_DEF	DRBD_LOCK_HOLDER_ANY
+#define DRBD_LOCK_HOLDER_ANY_SCALE	'1'
+
+/* Range/default for the second LOCK_PARMS field. Default 0 means
+ * "do not check" - the kernel side accepts any generation when this
+ * field is absent or zero. Max u32. */
+#define DRBD_LOCK_EXPECTED_GENERATION_MIN	0U
+#define DRBD_LOCK_EXPECTED_GENERATION_MAX	0xFFFFFFFFU
+#define DRBD_LOCK_EXPECTED_GENERATION_DEF	0U
+#define DRBD_LOCK_EXPECTED_GENERATION_SCALE	'1'
+
 #endif
