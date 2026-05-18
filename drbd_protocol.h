@@ -651,6 +651,18 @@ struct p_twopc_request {
 				uint64_t exposed_size;
 			};
 		};
+		struct {     /* TWOPC_ADMIN_LOCK (P_TWOPC_PREP_LOCK / COMMIT / ABORT)
+			      * The generation_tid of the admin_lock instance being
+			      * acquired or released. Required so the peer-side
+			      * prepare validator can match it against its stored
+			      * resource->admin_lock.generation_tid (otherwise an
+			      * unlock from the same holder with a fresh tid would
+			      * be rejected as cross-holder release).
+			      * Overlaps the leading bytes of the other unions; safe
+			      * because the type discriminator (resource->twopc.type)
+			      * selects which alternative to read. */
+			uint32_t admin_lock_generation;
+		};
 	};
 } __packed;
 
