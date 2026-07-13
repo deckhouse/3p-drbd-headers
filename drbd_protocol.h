@@ -375,6 +375,15 @@ struct p_rs_req {
  */
 #define DRBD_FF_RESYNC_WITHOUT_REPLICATION 128
 
+/* When set, after a reconnect the nodes reconcile their data generation
+ * (dagtag/UUID) state before resuming replication, so a node that missed a
+ * current-UUID bump does not silently diverge.
+ *
+ * Bit 8 (value 256) is reserved (used for DRBD_FF_BM_BLOCK_SHIFT on the
+ * drbd-10/master line), so this feature uses bit 9 (value 512).
+ */
+#define DRBD_FF_RECONCILE_RECONNECT 512
+
 struct p_connection_features {
 	uint32_t protocol_min;
 	uint32_t feature_flags;
