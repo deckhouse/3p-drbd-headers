@@ -125,6 +125,18 @@ enum drbd_packet {
 	P_ENABLE_REPLICATION_NEXT = 0x58, /* data sock: whether to start replication on next resync start */
 	P_ENABLE_REPLICATION  = 0x59, /* data sock: enable or disable replication during resync */
 
+	P_TWOPC_PREP_LOCK     = 0x5a, /* data sock: PREPARE a 2PC admin lock acquire/release;
+				       * lock vs unlock encoded in twopc_request flags
+				       * (TWOPC_ADMIN_LOCK_OP_LOCK / OP_UNLOCK).
+				       * Requires DRBD_FF_ADMIN_LOCK on all peers.
+				       * Commit phase reuses the existing
+				       * P_TWOPC_COMMIT / P_TWOPC_ABORT packets. */
+	P_ADMIN_LOCK_STATE    = 0x5b, /* data sock: exchange the local admin_lock view
+				       * during state-handshake. The peer with the
+				       * larger seq wins; on equal seq the views
+				       * must coincide. Sent only when
+				       * DRBD_FF_ADMIN_LOCK is in agreed_features. */
+
 	P_MAY_IGNORE	      = 0x100, /* Flag to test if (cmd > P_MAY_IGNORE) ... */
 
 	/* special command ids for handshake */
@@ -384,6 +396,26 @@ struct p_rs_req {
  */
 #define DRBD_FF_RECONCILE_RECONNECT 512
 
+/* Support for cluster-wide administrative lock.
+ *
+ * When this feature is negotiated by all peers, a node may acquire a
+ * cluster-wide admin lock on a resource via DRBD_ADM_LOCK. The lock is
+ * propagated atomically through the existing two-phase commit machinery
+ * using a new transaction type TWOPC_ADMIN_LOCK and is released either
+ * explicitly via DRBD_ADM_UNLOCK / DRBD_ADM_FORCE_UNLOCK or implicitly
+ * during a state-handshake when the peer's lock generation supersedes
+ * the local one. While the lock is held, all administrative netlink
+ * commands except those required for snapshot/clone IO orchestration
+ * (suspend-io, resume-io, track-bitmap, flush-bitmap, new-current-uuid)
+ * are rejected with -EBUSY on every node. There is no kernel-level
+ * timeout or auto-release: the lock lifecycle is owned by userspace.
+ *
+ * Bit 8 (value 256) is reserved for DRBD_FF_BM_BLOCK_SHIFT and bit 9
+ * (value 512) is taken by DRBD_FF_RECONCILE_RECONNECT, so this feature
+ * uses bit 10 (value 1024).
+ */
+#define DRBD_FF_ADMIN_LOCK 1024
+
 struct p_connection_features {
 	uint32_t protocol_min;
 	uint32_t feature_flags;
@@ -562,6 +594,21 @@ struct p_state {
 	uint32_t state;
 } __packed;
 
+/* Sent on P_ADMIN_LOCK_STATE during state-handshake when both peers
+ * advertise DRBD_FF_ADMIN_LOCK. The receiver compares (seq, holder, gen)
+ * with its local admin_lock view and adopts the side with the larger
+ * seq. seq is monotonic per-resource (bumped on every successful
+ * TWOPC_ADMIN_LOCK commit, lock or unlock); generation_tid is the
+ * random twopc tid of the latest acquisition (0 if !held); holder is
+ * the node_id of the holder (-1 if !held). */
+struct p_admin_lock_state {
+	uint64_t seq;
+	uint32_t generation_tid;
+	int8_t  holder_node_id;
+	uint8_t held;
+	uint8_t _pad[2];
+} __packed;
+
 struct p_req_state {
 	uint32_t mask;
 	uint32_t val;
@@ -608,12 +655,26 @@ struct p_twopc_request {
 				uint64_t exposed_size;
 			};
 		};
+		struct {     /* TWOPC_ADMIN_LOCK (P_TWOPC_PREP_LOCK / COMMIT / ABORT)
+			      * The generation_tid of the admin_lock instance being
+			      * acquired or released. Required so the peer-side
+			      * prepare validator can match it against its stored
+			      * resource->admin_lock.generation_tid (otherwise an
+			      * unlock from the same holder with a fresh tid would
+			      * be rejected as cross-holder release).
+			      * Overlaps the leading bytes of the other unions; safe
+			      * because the type discriminator (resource->twopc.type)
+			      * selects which alternative to read. */
+			uint32_t admin_lock_generation;
+		};
 	};
 } __packed;
 
 #define TWOPC_HAS_FLAGS     0x80000000 /* For packet dissectors */
 #define TWOPC_HAS_REACHABLE 0x40000000 /* The reachable_nodes field is valid */
 #define TWOPC_PRI_INCAPABLE 0x20000000 /* The primary has no access to data */
+#define TWOPC_ADMIN_LOCK_OP_LOCK   0x10000000 /* TWOPC_ADMIN_LOCK: acquire */
+#define TWOPC_ADMIN_LOCK_OP_UNLOCK 0x08000000 /* TWOPC_ADMIN_LOCK: release */
 
 struct p_twopc_reply {
 	uint32_t tid;  /* transaction identifier */

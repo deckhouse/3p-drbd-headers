@@ -150,6 +150,12 @@ GENL_struct(DRBD_NLA_RESOURCE_OPTS, 4, res_opts,
 	__u32_field_def(14,	0 /* OPTIONAL */,	on_susp_primary_outdated, DRBD_ON_SUSP_PRI_OUTD_DEF)
 	__flg_field_def(15,	0 /* OPTIONAL */,	drbd8_compat_mode, DRBD_DRBD8_COMPAT_MODE_DEF)
 	__flg_field_def(25,	0 /* OPTIONAL */,	quorum_dynamic_voters, DRBD_QUORUM_DYNAMIC_VOTERS_DEF)
+	/* Maximum time DRBD_ADM_LOCK is allowed to wait under adm_mutex
+	 * for all local peer connections to reach Established (i.e., for
+	 * any background resync to complete) before returning ERR_LOCK_BUSY.
+	 * Lives here (not in DRBD_NLA_LOCK_PARMS) to follow the project
+	 * convention for administrative timeouts (cf. twopc_timeout). */
+	__u32_field_def(26,	0 /* OPTIONAL */,	admin_lock_wait_timeout, DRBD_LOCK_WAIT_TIMEOUT_DEF)
 )
 
 GENL_struct(DRBD_NLA_NET_CONF, 5, net_conf,
@@ -245,6 +251,12 @@ GENL_struct(DRBD_NLA_RESOURCE_INFO, 15, resource_info,
 	__flg_field(4, 0, res_susp_fen)
 	__flg_field(5, 0, res_susp_quorum)
 	__flg_field(6, 0, res_fail_io)
+	/* admin-lock observability (only meaningful when DRBD_FF_ADMIN_LOCK
+	 * is negotiated by all peers; otherwise res_admin_lock_held is
+	 * reported as false on every node). */
+	__flg_field_def(7, 0 /* OPTIONAL */, res_admin_lock_held, 0)
+	__s32_field_def(8, 0 /* OPTIONAL */, res_admin_lock_holder_node_id, DRBD_LOCK_HOLDER_ANY)
+	__u32_field_def(9, 0 /* OPTIONAL */, res_admin_lock_generation, 0)
 )
 
 GENL_struct(DRBD_NLA_DEVICE_INFO, 16, device_info,
@@ -383,6 +395,36 @@ GENL_struct(DRBD_NLA_RENAME_RESOURCE_INFO, 32, rename_resource_info,
 
 GENL_struct(DRBD_NLA_INVAL_PEER_PARAMS, 33, invalidate_peer_parms,
 	__flg_field_def(1, DRBD_GENLA_F_MANDATORY, p_reset_bitmap, DRBD_INVALIDATE_RESET_BITMAP_DEF)
+)
+
+GENL_struct(DRBD_NLA_TRACK_BITMAP_PARMS, 34, track_bitmap_parms,
+	__flg_field(1, DRBD_GENLA_F_MANDATORY, start)
+)
+
+/* Parameters for DRBD_ADM_LOCK / DRBD_ADM_UNLOCK / DRBD_ADM_FORCE_UNLOCK.
+ *
+ * Only carries data that is genuinely per-call. The maximum wait time
+ * for the resync-drain phase of DRBD_ADM_LOCK is configured per resource
+ * via res_opts.admin_lock_wait_timeout (RESOURCE_OPTS), following the
+ * same convention as twopc_timeout/auto_promote_timeout.
+ *
+ * For DRBD_ADM_LOCK: no fields are required.
+ *
+ * For DRBD_ADM_UNLOCK:
+ *   - lock_expected_holder_node_id and lock_expected_generation, if set,
+ *     are matched against the kernel's stored holder; mismatch causes the
+ *     unlock to be rejected with ERR_NOT_LOCK_HOLDER. This is the primary
+ *     defense against split-brain unlocks where a crashed-and-restarted
+ *     k8s controller pod accidentally releases a lock taken by its
+ *     successor.
+ *
+ * For DRBD_ADM_FORCE_UNLOCK:
+ *   - all fields are ignored; the operator escape hatch always succeeds
+ *     (locally; cluster-wide propagation is best-effort via twopc).
+ */
+GENL_struct(DRBD_NLA_LOCK_PARMS, 35, lock_parms,
+	__s32_field_def(1, 0 /* OPTIONAL */, lock_expected_holder_node_id, DRBD_LOCK_HOLDER_ANY)
+	__u32_field_def(2, 0 /* OPTIONAL */, lock_expected_generation, 0)
 )
 
 /*
@@ -620,6 +662,47 @@ GENL_op(DRBD_ADM_CHG_PEER_DEVICE_OPTS, 43,
 GENL_op(DRBD_ADM_RENAME_RESOURCE,		49, GENL_doit(drbd_adm_rename_resource),
 	GENL_tla_expected(DRBD_NLA_CFG_CONTEXT, DRBD_F_REQUIRED)
 	GENL_tla_expected(DRBD_NLA_RENAME_RESOURCE_PARMS, DRBD_F_REQUIRED))
+
+GENL_op(DRBD_ADM_TRACK_BITMAP,		51, GENL_doit(drbd_adm_track_bitmap),
+	GENL_tla_expected(DRBD_NLA_CFG_CONTEXT, DRBD_F_REQUIRED)
+	GENL_tla_expected(DRBD_NLA_TRACK_BITMAP_PARMS, DRBD_F_REQUIRED))
+
+GENL_op(DRBD_ADM_FLUSH_BITMAP,		52, GENL_doit(drbd_adm_flush_bitmap),
+	GENL_tla_expected(DRBD_NLA_CFG_CONTEXT, DRBD_F_REQUIRED))
+
+/* Cluster-wide administrative lock.
+ *
+ * DRBD_ADM_LOCK acquires the per-resource admin lock atomically across
+ * all peers via TWOPC_ADMIN_LOCK. The coordinator first takes
+ * resource->adm_mutex, then waits up to res_opts.admin_lock_wait_timeout
+ * (RESOURCE_OPTS, seconds) for all local peer connections to be
+ * Established (no background resync in progress); peers reply YES/NO
+ * in P_TWOPC_PREPARE without waiting. On
+ * success, every node sets resource->admin_lock.held=true, records the
+ * holder_node_id (== initiator) and a fresh generation_tid (== twopc
+ * tid). While held, all admin handlers outside the IO-orchestration
+ * whitelist (suspend-io, resume-io, track-bitmap, flush-bitmap,
+ * new-current-uuid, get-* dumps, unlock, force-unlock) are rejected
+ * with -EBUSY.
+ *
+ * DRBD_ADM_UNLOCK releases the lock atomically via TWOPC_ADMIN_LOCK.
+ * If lock_expected_holder_node_id / lock_expected_generation are set,
+ * the kernel verifies they match the current holder before releasing.
+ *
+ * DRBD_ADM_FORCE_UNLOCK is the operator escape hatch: it releases the
+ * lock locally without taking adm_mutex and best-effort propagates the
+ * release via twopc. Required when the original holder node has died
+ * permanently and the lock would otherwise be wedged forever. */
+GENL_op(DRBD_ADM_LOCK,			53, GENL_doit(drbd_adm_lock),
+	GENL_tla_expected(DRBD_NLA_CFG_CONTEXT, DRBD_F_REQUIRED)
+	GENL_tla_expected(DRBD_NLA_LOCK_PARMS, DRBD_GENLA_F_MANDATORY))
+
+GENL_op(DRBD_ADM_UNLOCK,		54, GENL_doit(drbd_adm_unlock),
+	GENL_tla_expected(DRBD_NLA_CFG_CONTEXT, DRBD_F_REQUIRED)
+	GENL_tla_expected(DRBD_NLA_LOCK_PARMS, DRBD_GENLA_F_MANDATORY))
+
+GENL_op(DRBD_ADM_FORCE_UNLOCK,		55, GENL_doit(drbd_adm_force_unlock),
+	GENL_tla_expected(DRBD_NLA_CFG_CONTEXT, DRBD_F_REQUIRED))
 
 GENL_notification(
 	DRBD_PATH_STATE, 48, events,
