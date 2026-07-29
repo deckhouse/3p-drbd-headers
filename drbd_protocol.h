@@ -409,8 +409,12 @@ struct p_rs_req {
  * (suspend-io, resume-io, track-bitmap, flush-bitmap, new-current-uuid)
  * are rejected with -EBUSY on every node. There is no kernel-level
  * timeout or auto-release: the lock lifecycle is owned by userspace.
+ *
+ * Bit 8 (value 256) is reserved for DRBD_FF_BM_BLOCK_SHIFT and bit 9
+ * (value 512) is taken by DRBD_FF_RECONCILE_RECONNECT, so this feature
+ * uses bit 10 (value 1024).
  */
-#define DRBD_FF_ADMIN_LOCK 256
+#define DRBD_FF_ADMIN_LOCK 1024
 
 struct p_connection_features {
 	uint32_t protocol_min;
